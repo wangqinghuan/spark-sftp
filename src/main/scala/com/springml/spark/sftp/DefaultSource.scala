@@ -18,9 +18,8 @@ package com.springml.spark.sftp
 import java.io.File
 import java.util.UUID
 
-import com.springml.sftp.client.SFTPClient
+import com.springml.spark.sftp.util.MyFTPClient
 import com.springml.spark.sftp.util.Utils.ImplicitDataFrameWriter
-
 import org.apache.commons.io.FilenameUtils
 import org.apache.hadoop.fs.Path
 import org.apache.log4j.Logger
@@ -78,9 +77,8 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
       "false"
     }
 
-    val sftpClient = getSFTPClient(username, password, pemFileLocation, pemPassphrase, host, port,
-      cryptoKey, cryptoAlgorithm)
-    val copiedFileLocation = copy(sftpClient, path, tempFolder, copyLatest.toBoolean)
+    val ftpClient = getFTPClient(username, password, host, port)
+    val copiedFileLocation = copy(ftpClient, path, tempFolder, copyLatest.toBoolean)
     val fileLocation = copyToHdfs(sqlContext, copiedFileLocation, hdfsTemp)
 
     if (!createDF.toBoolean) {
@@ -125,11 +123,10 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
       sys.error("fileType " + fileType + " not supported. Supported file types are " + supportedFileTypes)
     }
 
-    val sftpClient = getSFTPClient(username, password, pemFileLocation, pemPassphrase, host, port,
-      cryptoKey, cryptoAlgorithm)
+    val ftpClient = getFTPClient(username, password,  host, port)
     val tempFile = writeToTemp(sqlContext, data, hdfsTemp, tmpFolder, fileType, header, delimiter, quote, escape, multiLine, codec, rowTag, rootTag)
 
-    upload(tempFile, path, sftpClient)
+    upload(tempFile, path, ftpClient)
     return createReturnRelation(data)
   }
   private def copyToHdfs(sqlContext: SQLContext, fileLocation : String,
@@ -161,37 +158,26 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
     }
   }
 
-  private def upload(source: String, target: String, sftpClient: SFTPClient) {
+  private def upload(source: String, target: String, ftpClient: MyFTPClient) {
     logger.info("Copying " + source + " to " + target)
-    sftpClient.copyToFTP(source, target)
+    ftpClient.copyToFTP(source, target)
   }
 
-  private def getSFTPClient(
+  private def getFTPClient(
       username: Option[String],
       password: Option[String],
-      pemFileLocation: Option[String],
-      pemPassphrase: Option[String],
       host: String,
-      port: Option[String],
-      cryptoKey : String,
-      cryptoAlgorithm : String) : SFTPClient = {
+      port: Option[String] ) : MyFTPClient = {
 
-    val sftpPort = if (port != null && port.isDefined) {
+    val ftpPort = if (port != null && port.isDefined) {
       port.get.toInt
     } else {
-      22
+      21
     }
 
-    val cryptoEnabled = cryptoKey != null
 
-    if (cryptoEnabled) {
-      new SFTPClient(getValue(pemFileLocation), getValue(pemPassphrase), getValue(username),
-        getValue(password),
-          host, sftpPort, cryptoEnabled, cryptoKey, cryptoAlgorithm)
-    } else {
-      new SFTPClient(getValue(pemFileLocation), getValue(pemPassphrase), getValue(username),
-        getValue(password), host, sftpPort)
-    }
+      new MyFTPClient(getValue(username),getValue(password),host, ftpPort)
+
   }
 
   private def createReturnRelation(data: DataFrame): BaseRelation = {
@@ -205,17 +191,17 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
     }
   }
 
-  private def copy(sftpClient: SFTPClient, source: String,
+  private def copy(ftpClient: MyFTPClient, source: String,
       tempFolder: String, latest: Boolean): String = {
     var copiedFilePath: String = null
     try {
       val target = tempFolder + File.separator + FilenameUtils.getName(source)
       copiedFilePath = target
       if (latest) {
-        copiedFilePath = sftpClient.copyLatest(source, tempFolder)
+        copiedFilePath = ftpClient.copyLatest(source, tempFolder)
       } else {
         logger.info("Copying " + source + " to " + target)
-        copiedFilePath = sftpClient.copy(source, target)
+        copiedFilePath = ftpClient.copy(source, target)
       }
 
       copiedFilePath

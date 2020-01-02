@@ -21,7 +21,7 @@ import java.util.UUID
 import com.springml.spark.sftp.util.MyFTPClient
 import com.springml.spark.sftp.util.Utils.ImplicitDataFrameWriter
 import org.apache.commons.io.FilenameUtils
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.sources.{BaseRelation, CreatableRelationProvider, RelationProvider, SchemaRelationProvider}
 import org.apache.spark.sql.types.StructType
@@ -39,6 +39,7 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
   override def createRelation(sqlContext: SQLContext, parameters: Map[String, String]):BaseRelation = {
     createRelation(sqlContext, parameters, null)
   }
+
 
   /**
    * Copy the file from SFTP to local location and then create dataframe using local file
@@ -60,8 +61,8 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
     val multiLine = parameters.getOrElse("multiLine", "false")
     val createDF = parameters.getOrElse("createDF", "true")
     val copyLatest = parameters.getOrElse("copyLatest", "false")
-    val tempFolder = parameters.getOrElse("tempLocation", System.getProperty("java.io.tmpdir"))
-    val hdfsTemp = parameters.getOrElse("hdfsTempLocation", tempFolder)
+    var tempFolder = parameters.getOrElse("tempLocation", System.getProperty("java.io.tmpdir"))
+    var hdfsTemp = parameters.getOrElse("hdfsTempLocation", tempFolder)
     val cryptoKey = parameters.getOrElse("cryptoKey", null)
     val cryptoAlgorithm = parameters.getOrElse("cryptoAlgorithm", "AES")
     val rowTag = parameters.getOrElse(constants.xmlRowTag, null)
@@ -78,6 +79,11 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
     }
 
     val ftpClient = getFTPClient(username, password, host, port)
+    val uuid = UUID.randomUUID();
+    tempFolder +=  uuid + "/"
+    createDir(tempFolder)
+    hdfsTemp +=  uuid + "/"
+    createHdfsDir(sqlContext,hdfsTemp)
     val copiedFileLocation = copy(ftpClient, path, tempFolder, copyLatest.toBoolean)
     val fileLocation = copyToHdfs(sqlContext, copiedFileLocation, hdfsTemp)
 
@@ -169,6 +175,11 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
       return hdfsTemp
     }
   }
+  def createHdfsDir(sqlContext: SQLContext,hdfsTemp: String) = {
+    val hadoopConf = sqlContext.sparkContext.hadoopConfiguration
+    val fs = FileSystem.get(hadoopConf)
+    fs.mkdirs(new Path(hdfsTemp))
+  }
 
   private def upload(source: String, target: String, ftpClient: MyFTPClient) {
     logger.info("Copying " + source + " to " + target)
@@ -221,7 +232,20 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
       addShutdownHook(copiedFilePath)
     }
   }
-
+  def createDir( destDirName:String) :Boolean = {
+    val dir = new File(destDirName);
+    if (dir.exists()) {
+      System.out.println("创建目录" + destDirName + "失败，目标目录已经存在");
+      return false;
+    }
+    if (dir.mkdirs()) {
+      System.out.println("创建目录" + destDirName + "成功！");
+      return true;
+    } else {
+      System.out.println("创建目录" + destDirName + "失败！");
+      return false;
+    }
+  }
   private def getValue(param: Option[String]): String = {
     if (param != null && param.isDefined) {
       param.get

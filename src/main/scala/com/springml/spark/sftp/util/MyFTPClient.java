@@ -39,7 +39,7 @@ public class MyFTPClient {
         this.port = port;
 
     }
-    private FTPClient connectFtp() throws Exception {
+    public FTPClient connectFtp() throws Exception {
         FTPClient ftp = new FTPClient();
 
         ftp.addProtocolCommandListener(new PrintCommandListener(new PrintWriter(System.out)));
@@ -149,15 +149,19 @@ public class MyFTPClient {
 
     private void copyInternal(FTPClient ftpClient, String source, String target) throws Exception {
         LOG.info("Copying file from " + source + " to " + target);
-        try {
-            ftpClient.changeWorkingDirectory(source);
-            copyDir(ftpClient, source, target);
-        } catch (Exception e) {
-            // Source is a file
-            OutputStream outputStream =
-                    new BufferedOutputStream(new FileOutputStream(target + source));
-            boolean success = ftpClient.retrieveFile(source, outputStream);
-        }
+
+           boolean directoryExists  =  ftpClient.changeWorkingDirectory(source);
+           if(directoryExists){
+               copyDir(ftpClient, source, target);
+           } else{
+
+               OutputStream outputStream =
+                       new BufferedOutputStream(new FileOutputStream(target));
+               ftpClient.retrieveFile(source, outputStream);
+               outputStream.close();
+
+           }
+
     }
 
     private void copyDir(FTPClient ftpClient, String source, String target) throws Exception {
@@ -177,6 +181,7 @@ public class MyFTPClient {
                     OutputStream outputStream =
                             new BufferedOutputStream(new FileOutputStream(target + entryName));
                     ftpClient.retrieveFile(entryName, outputStream);
+                    outputStream.close();
                 }
             }
         }
@@ -218,6 +223,7 @@ public class MyFTPClient {
             }
         }
     }
+
 
 
 }

@@ -1,5 +1,6 @@
 package com.springml.spark.sftp
 
+import com.springml.spark.sftp.util.MyFTPClient
 import org.apache.spark.sql.SparkSession
 import org.scalatest.{BeforeAndAfterEach, FunSuite}
 
@@ -75,4 +76,6 @@ class TestDatasetRelation extends FunSuite with BeforeAndAfterEach {
     val rdd = dsr.buildScan()
     assert(12 == rdd.count())
   }
+
+
 }
